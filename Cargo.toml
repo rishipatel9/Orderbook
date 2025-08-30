@@ -22,7 +22,7 @@ rand = "0.8"
 config = "0.14"
 lazy_static = "1.5.0"
 futures-util = "0.3.31"
-reqwest = "0.12.23"
+chrono = "0.4.41"
 
 [dependencies.serde]
 version = "1.0.219"
@@ -35,3 +35,11 @@ features = ["tokio-comp"]
 [dependencies.tokio]
 version = "1.0"
 features = ["full", "macros"]
+
+[dependencies.reqwest]
+version = "0.12.23"
+features = ["json"]
+
+[dependencies.uuid]
+version= "1.18.0"
+features = ["v4"]
