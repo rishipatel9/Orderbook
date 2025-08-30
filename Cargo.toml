@@ -1,0 +1,37 @@
+[package]
+name = "orderbook"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "worker"
+path = "src/bin/worker.rs"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[[bin]]
+name = "simulator"
+path = "src/bin/simulator.rs"
+
+[dependencies]
+actix-web = "4.11.0"
+serde_json = "1.0.143"
+rand = "0.8"
+config = "0.14"
+lazy_static = "1.5.0"
+futures-util = "0.3.31"
+reqwest = "0.12.23"
+
+[dependencies.serde]
+version = "1.0.219"
+features = ["derive"]
+
+[dependencies.redis]
+version = "0.23"
+features = ["tokio-comp"]
+
+[dependencies.tokio]
+version = "1.0"
+features = ["full", "macros"]
