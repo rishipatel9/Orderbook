@@ -1,8 +1,9 @@
 use rand::{rngs::ThreadRng, Rng};
 use redis::{AsyncCommands, Client};
+use serde_json::Value;
 use tokio::time::{sleep, Duration};
 use serde::{Serialize, Deserialize};
-use orderbook::config::APP_CONFIG;
+use orderbook::{config::APP_CONFIG, engine::engine::process_order};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct OrderResponse {
@@ -21,17 +22,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let result: redis::RedisResult<Vec<String>> = conn.blpop("order", 0).await;
         match result {
             Ok(items) => {
-                if items.len() >= 2 {
+                 if items.len() >= 2 {
+                    let order_data = &items[1];
+                    
+                    let order_json: Value = serde_json::from_str(order_data)?;
+                    process_order(&order_json);
+                    let request_id = order_json["request_id"].as_str()
+                        .unwrap_or("unknown");
+                    
                     let n: u32 = rng.gen_range(1..=100);
                     let response = OrderResponse {
-                        order: items[1].clone(),
+                        order: order_data.clone(),
                         result_id: n,
                     };
 
                     let json = serde_json::to_string(&response)?;
-                    println!("Order processed and publishing: {:?}", response);
-                    let _: () = conn.publish("order_response", json).await?;
-                } 
+                    
+                    let response_channel = format!("order_response:{}", request_id);
+                    let _: () = conn.publish(&response_channel, json).await?;
+                }
             } 
             Err(e) => {
                 eprintln!("Error reading from Redis queue: {}", e);
@@ -40,3 +49,4 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 }
+
