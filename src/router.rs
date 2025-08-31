@@ -2,13 +2,35 @@ use actix_web::{post, web::{self, Data, Json}, HttpResponse, Responder};
 use serde_json::Value;
 use redis::AsyncCommands;
 use futures_util::stream::StreamExt;
+use uuid::Uuid;
 use crate::{inputs::CreateOrderInput, output::{CreateOrderOutput, Success}};
 
 type RedisPool = redis::Client;
 
 #[post("/order")]
 pub async fn create_order(body:Json<CreateOrderInput>,redis_client:Data<RedisPool>) ->impl Responder{
-    let serialized_order = serde_json::to_string(&body.0).unwrap();
+
+    let request_id = Uuid::new_v4().to_string();
+    let response_channel = format!("order_response:{}",request_id);
+
+    let mut order_with_id = serde_json::to_value(&body.0).unwrap();
+    order_with_id["request_id"] = Value::String(request_id.clone());
+    let serialized_order = order_with_id.to_string();
+
+    let pubsub_conn = match redis_client.get_async_connection().await {
+        Ok(c) =>c,
+        Err(e)=>{
+            eprintln!("Error Creating Pub Sub Connection : {:?}",e);
+            return HttpResponse::InternalServerError().finish();
+        }
+    };
+    let mut pubsub = pubsub_conn.into_pubsub();
+    if let Err(e) = pubsub.subscribe(&response_channel).await {
+        eprintln!("Failed to subscribe: {}", e);
+        return HttpResponse::InternalServerError().finish();
+    }
+    println!("Subdrcibed to order_response ... now waiting for response");
+
     let mut conn = match redis_client.get_async_connection().await {
         Ok(c) => c,
         Err(e) => {
@@ -21,21 +43,6 @@ pub async fn create_order(body:Json<CreateOrderInput>,redis_client:Data<RedisPoo
          eprintln!("Failed to push to Queue: {}", e);
         return HttpResponse::InternalServerError().finish();
     };
-   
-    let pubsub_conn = match redis_client.get_async_connection().await {
-        Ok(c) =>c,
-        Err(e)=>{
-            eprintln!("Error Creating Pub Sub Connection : {:?}",e);
-            return HttpResponse::InternalServerError().finish();
-        }
-    };
-    let mut pubsub = pubsub_conn.into_pubsub();
-    if let Err(e) = pubsub.subscribe("order_response").await {
-        eprintln!("Failed to subscribe: {}", e);
-        return HttpResponse::InternalServerError().finish();
-    }
-    println!("Subdrcibed to order_response ... now waiting for response");
-
     let msg = pubsub.on_message().next().await;
 
     match msg{
