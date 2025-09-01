@@ -2,7 +2,7 @@ use rand::{Rng, thread_rng};
 use reqwest::Client;
 use std::{collections::VecDeque, thread::sleep, time::Duration};
 
-use crate::inputs::{CreateOrderInput, Side, Symbol};
+use crate::inputs::{CreateOrderInput, OrderType, Side, Symbol};
 pub struct OrderSimulator {
     client: Client,
     server_url: String,
@@ -143,6 +143,7 @@ impl OrderSimulator {
             quantity,
             price: (price * 100.0).round() / 100.0,
             user_id: 1,
+            order_type:OrderType::Limit
         };
 
         (order, side) 
