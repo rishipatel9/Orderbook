@@ -1,27 +1,32 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    engine::service::{add_order, match_order}, global::{ORDERBOOKS}, inputs::{ Order, OrderBook, OrderBookDepth, OrderBookState, OrderType, Price, Symbol}
+    engine::service::{add_order, match_order}, 
+    global::ORDERBOOKS, 
+    inputs::{Order, OrderBook, OrderBookDepth, OrderBookState, OrderType, Price, Symbol}
 };
 
 impl OrderBook {
-    pub fn new(symbol: Symbol, price: Price) -> Self {
+    pub fn new(symbol: Symbol) -> Self {
         Self {
             symbol,
             asks: BTreeMap::new(),
             bids: BTreeMap::new(),
-            current_price: Some(price),
+            current_price: None, 
             current_best_ask: None,
             current_best_bid: None,
             last_trade_price: None,
         }
     }
+
     pub fn add_order(&mut self, order: Order) {
         add_order(self, order);
     }
+
     pub fn match_order(&mut self, incoming_order: &Order, order_type: OrderType) -> Vec<Order> {
         match_order(self, incoming_order, order_type)
     }
+
     pub fn get_depth(&self, levels: usize) -> OrderBookDepth {
         let mut bids: Vec<(u64, u64)> = self
             .bids

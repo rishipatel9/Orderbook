@@ -1,10 +1,13 @@
 use chrono::Utc;
 use serde_json::Value;
 
-use crate::{global::{NEXT_ORDER_ID, ORDERBOOKS}, inputs::{CreateOrderInput, Order, OrderBook, OrderBookState, OrderType, ProcessOrderResult, Side}};
+use crate::{
+    global::{NEXT_ORDER_ID, ORDERBOOKS}, 
+    inputs::{CreateOrderInput, Order, OrderBook, OrderBookState, OrderType, ProcessOrderResult, Side}
+};
 
 pub fn add_order(orderbook: &mut OrderBook, order: Order) {
-    let book: &mut std::collections::BTreeMap<u64, Vec<Order>> = if order.is_buy {
+    let book = if order.is_buy {
         &mut orderbook.bids
     } else {
         &mut orderbook.asks
@@ -13,85 +16,107 @@ pub fn add_order(orderbook: &mut OrderBook, order: Order) {
     update_best_prices(orderbook);
 }
 
-pub fn match_order(orderbook: &mut OrderBook, order: &Order, order_type: OrderType) -> Vec<Order> {
-    let mut trades = Vec::new();
-    let mut qty_left = order.qty;
-
-    if order.is_buy {
-        let mut prices: Vec<_> = orderbook.asks.keys().cloned().collect();
+pub fn match_order(orderbook: &mut OrderBook, incoming_order: &Order, order_type: OrderType) -> Vec<Order> {
+    let mut trades:Vec<Order> = Vec::new();
+    let mut qty_left :u64= incoming_order.qty;
+    if incoming_order.is_buy {
+        let mut prices: Vec<u64> = orderbook.asks.keys().cloned().collect();
         prices.sort();
+        
         for price in prices {
-            if order_type == OrderType::Limit && price > order.price {
+
+            if order_type == OrderType::Limit && price > incoming_order.price {
                 break;
             }
-            let order = orderbook.asks.get_mut(&price).unwrap();
-            for resting in order.iter_mut() {
+            if let Some(resting_orders) = orderbook.asks.get_mut(&price) {
+                let mut i = 0;
+                while i < resting_orders.len() && qty_left > 0 {
+                    let resting_order = &mut resting_orders[i];
+                    let trade_qty = qty_left.min(resting_order.qty);
+                    
+                    trades.push(Order {
+                        id: resting_order.id,
+                        price,
+                        qty: trade_qty,
+                        is_buy: false, 
+                        time: Utc::now().to_string(),
+                        order_type: OrderType::Limit,
+                        // user_id: resting_order.user_id,
+                    });
+                    
+                    resting_order.qty -= trade_qty;
+                    qty_left -= trade_qty;
+                    orderbook.last_trade_price = Some(price);
+                    orderbook.current_price = Some(price);
+                    
+                    if resting_order.qty == 0 {
+                        resting_orders.remove(i);
+                    } else {
+                        i += 1;
+                    }
+                }
+                
+                if resting_orders.is_empty() {
+                    orderbook.asks.remove(&price);
+                }
+                
                 if qty_left == 0 {
                     break;
                 }
-                let trade_qty = qty_left.min(resting.qty);
-                trades.push(Order {
-                    id: resting.id,
-                    price,
-                    qty: trade_qty,
-                    is_buy: false,
-                    time: resting.time.to_string(),
-                    order_type: OrderType::Limit,
-                });
-                resting.qty -= trade_qty;
-                qty_left -= trade_qty;
-                orderbook.last_trade_price = Some(price);
-                orderbook.current_price = Some(price);
-            }
-            order.retain(|o| o.qty > 0);
-            if qty_left == 0 {
-                break;
-            }
-            if order.is_empty() {
-                orderbook.asks.remove(&price);
             }
         }
     } else {
-        let mut prices: Vec<_> = orderbook.bids.keys().cloned().collect();
-        prices.sort_by(|a, b| b.cmp(a));
-
+        let mut prices: Vec<u64> = orderbook.bids.keys().cloned().collect();
+        prices.sort_by(|a, b| b.cmp(a)); // Descending order
         for price in prices {
-            if order_type == OrderType::Limit && price < order.price {
+            if order_type == OrderType::Limit && price < incoming_order.price {
                 break;
             }
-            let orders = orderbook.bids.get_mut(&price).unwrap();
-            for resting in orders.iter_mut() {
+            
+            if let Some(resting_orders) = orderbook.bids.get_mut(&price) {
+                let mut i = 0;
+                while i < resting_orders.len() && qty_left > 0 {
+                    let resting_order = &mut resting_orders[i];
+                    let trade_qty = qty_left.min(resting_order.qty);
+                    trades.push(Order {
+                        id: resting_order.id,
+                        price,
+                        qty: trade_qty,
+                        is_buy: true, 
+                        time: Utc::now().to_string(),
+                        order_type: OrderType::Limit,
+                        // user_id: resting_order.user_id,
+                    });
+                    
+                    resting_order.qty -= trade_qty;
+                    qty_left -= trade_qty;
+                    orderbook.last_trade_price = Some(price);
+                    orderbook.current_price = Some(price);
+                    
+                    if resting_order.qty == 0 {
+                        resting_orders.remove(i);
+                    } else {
+                        i += 1;
+                    }
+                }
+                
+                if resting_orders.is_empty() {
+                    orderbook.bids.remove(&price);
+                }
+                
                 if qty_left == 0 {
                     break;
                 }
-                let trade_qty = qty_left.min(resting.qty);
-                trades.push(Order {
-                    id: resting.id,
-                    price,
-                    qty: trade_qty,
-                    is_buy: true,
-                    time: resting.time.to_string(),
-                    order_type: OrderType::Limit,
-                });
-                resting.qty -= trade_qty;
-                qty_left -= trade_qty;
-                orderbook.last_trade_price = Some(price);
-                orderbook.current_price = Some(price);
-            }
-            orders.retain(|o| o.qty > 0);
-            if qty_left == 0 {
-                break;
-            }
-            if orders.is_empty() {
-                orderbook.bids.remove(&price);
             }
         }
     }
+
     if qty_left > 0 && order_type == OrderType::Limit {
-        let mut reminder = order.clone();
-        reminder.qty = qty_left;
-        orderbook.add_order(reminder);
+        let mut remaining_order = incoming_order.clone();
+        remaining_order.qty = qty_left;
+        add_order(orderbook, remaining_order);
     }
+    
     update_best_prices(orderbook);
     trades
 }
@@ -110,6 +135,7 @@ pub fn process_order(order_data: &Value) -> Result<ProcessOrderResult, Box<dyn s
         *id += 1;
         current_id
     };
+    
     let price_int = (order_input.price * 100.0) as u64;
 
     let order = Order {
@@ -120,18 +146,17 @@ pub fn process_order(order_data: &Value) -> Result<ProcessOrderResult, Box<dyn s
         order_type: order_input.order_type,
         time: Utc::now().to_string(),
     };
+
     let mut orderbooks = ORDERBOOKS.lock().unwrap();
     let orderbook = orderbooks
         .get_mut(&order_input.symbol)
         .ok_or("Invalid Symbol")?;
 
-    let trades = if order_input.order_type == OrderType::Market {
-        let trades = orderbook.match_order(&order, OrderType::Market);
-        trades
-    } else {
-        let trades = orderbook.match_order(&order, OrderType::Limit);
-        trades
+    let trades = match order_input.order_type {
+        OrderType::Market => orderbook.match_order(&order, OrderType::Market),
+        OrderType::Limit => orderbook.match_order(&order, OrderType::Limit),
     };
+
     let filled_quantity: u64 = trades.iter().map(|t| t.qty).sum();
     let remaining_quantity = order.qty.saturating_sub(filled_quantity);
 
@@ -142,6 +167,7 @@ pub fn process_order(order_data: &Value) -> Result<ProcessOrderResult, Box<dyn s
         best_ask: orderbook.current_best_ask,
         last_trade_price: orderbook.last_trade_price,
     };
+
     Ok(ProcessOrderResult {
         order_id,
         trades,
