@@ -1,8 +1,8 @@
-use orderbook::{config::APP_CONFIG, engine::service::process_order};
+use orderbook::engine::service::process_order;
 use rand::{ rngs::ThreadRng};
 use redis::{AsyncCommands, Client};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio::time::{Duration, sleep};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -17,8 +17,8 @@ struct OrderResponse {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let redis_url = &APP_CONFIG.redis_url;
-    let redis_client = Client::open(redis_url.clone())?;
+    let redis_url = "redis://127.0.0.1:6379/";
+    let redis_client = Client::open(redis_url)?;
     let mut conn = redis_client.get_async_connection().await?;
     let mut _rng: ThreadRng = rand::thread_rng();
 
@@ -48,6 +48,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 best_ask: result.orderbook_state.best_ask
                                     .map(|p| p as f64 / 100.0),
                             };
+                            
+                            if !result.trades.is_empty() {
+                                let market_update = serde_json::json!({
+                                    "symbol": order_json["symbol"].as_str().unwrap_or("unknown"),
+                                    "trades": result.trades.iter().map(|trade| json!({
+                                        "id": trade.id,
+                                        "price": trade.price as f64 / 100.0,
+                                        "quantity": trade.qty,
+                                        "timestamp": trade.time,
+                                        "side": if trade.is_buy { "buy" } else { "sell" }
+                                    })).collect::<Vec<_>>(),
+                                    "current_price": result.orderbook_state.current_price.map(|p| p as f64 / 100.0),
+                                    "best_bid": result.orderbook_state.best_bid.map(|p| p as f64 / 100.0),
+                                    "best_ask": result.orderbook_state.best_ask.map(|p| p as f64 / 100.0),
+                                    "timestamp": chrono::Utc::now().timestamp()
+                                });
+                                
+                                let _: () = conn.publish("market_updates", market_update.to_string()).await?;
+                                println!("📡 Published market update for {:?}", order_json["symbol"].as_str().unwrap_or("unknown"));
+                            }
                             println!("{:?}",response);
 
                             let json = serde_json::to_string(&response)?;

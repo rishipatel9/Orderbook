@@ -1,4 +1,6 @@
 
+mod websocket;
+
 use std::env;
 
 use orderbook::sim::runner::{run_multi_symbol_simulation, SimulatorConfig};
