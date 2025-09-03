@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 pub struct AppConfig {
     pub server_addr: String,
     pub redis_url: String,
+    pub ws_addr:String
 }
 lazy_static! {
     pub static ref SETTINGS: config::Config = config::Config::builder()

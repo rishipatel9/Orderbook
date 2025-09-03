@@ -29,7 +29,6 @@ pub async fn create_order(body:Json<CreateOrderInput>,redis_client:Data<RedisPoo
         eprintln!("Failed to subscribe: {}", e);
         return HttpResponse::InternalServerError().finish();
     }
-    println!("Subdrcibed to order_response ... now waiting for response");
 
     let mut conn = match redis_client.get_async_connection().await {
         Ok(c) => c,
