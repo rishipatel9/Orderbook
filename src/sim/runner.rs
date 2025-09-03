@@ -14,8 +14,8 @@ impl Default for SimulatorConfig {
                 Symbol::BTCUSD,
             ],
             base_prices: vec![100000.0],
-            volatilities: vec![0.03],
-            frequencies: vec![200],
+            volatilities: vec![0.0003],
+            frequencies: vec![20],
         }
     }
 }
@@ -23,13 +23,13 @@ impl Default for SimulatorConfig {
 //     fn default() -> Self {
 //         Self {
 //             symbols: vec![
-//                 "BTCUSD".to_string(),
-//                 "ETHUSD".to_string(),
-//                 "SOLUSD".to_string(),
+//                 Symbol::BTCUSD,
+//                 Symbol::ETHUSD,
+//                 Symbol::SOLUSD,
 //             ],
 //             base_prices: vec![45000.0, 2500.0, 100.0],
 //             volatilities: vec![0.02, 0.025, 0.03],
-//             frequencies: vec![2000, 3000, 4000],
+//             frequencies: vec![200, 300, 400],
 //         }
 //     }
 // }
